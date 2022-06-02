@@ -114,6 +114,7 @@ import Data.Data (Data)
 import Data.Data
 #endif
 
+import GHC.Types (Total, type (@))
 -- $setup
 -- >>> :set -XDeriveFunctor
 -- >>> import Prelude
@@ -136,15 +137,15 @@ import Data.Data
 -------------------------------------------------------------------------------
 
 -- | A fix-point type.
-newtype Fix f = Fix { unFix :: f (Fix f) }
+newtype f @ Fix f => Fix f = Fix { unFix :: f (Fix f) }
   deriving (Generic)
 
 -- | Change base functor in 'Fix'.
-hoistFix :: Functor f => (forall a. f a -> g a) -> Fix f -> Fix g
+hoistFix :: (Total f, Functor f) => (forall a. f a -> g a) -> Fix f -> Fix g
 hoistFix nt = go where go (Fix f) = Fix (nt (fmap go f))
 
 -- | Like 'hoistFix' but 'fmap'ping over @g@.
-hoistFix' :: Functor g => (forall a. f a -> g a) -> Fix f -> Fix g
+hoistFix' :: (Total g, Functor g) => (forall a. f a -> g a) -> Fix f -> Fix g
 hoistFix' nt = go where go (Fix f) = Fix (fmap go (nt f))
 
 -- | Fold 'Fix'.
@@ -266,18 +267,18 @@ fixDataType = mkDataType "Data.Functor.Foldable.Fix" [fixConstr]
 -- | Least fixed point. Efficient folding.
 newtype Mu f = Mu { unMu :: forall a. (f a -> a) -> a }
 
-instance (Functor f, Eq1 f) => Eq (Mu f) where
+instance (Total f, Functor f, Eq1 f) => Eq (Mu f) where
     (==) = (==) `on` foldMu Fix
 
-instance (Functor f, Ord1 f) => Ord (Mu f) where
+instance (Total f, Functor f, Ord1 f) => Ord (Mu f) where
     compare = compare `on` foldMu Fix
 
-instance (Functor f, Show1 f) => Show (Mu f) where
+instance (Total f, Functor f, Show1 f) => Show (Mu f) where
     showsPrec d f = showParen (d > 10) $
         showString "unfoldMu unFix " . showsPrec 11 (foldMu Fix f)
 
 #ifdef __GLASGOW_HASKELL__
-instance (Functor f, Read1 f) => Read (Mu f) where
+instance (Total f, Functor f, Read1 f) => Read (Mu f) where
     readPrec = parens $ prec 10 $ do
         Ident "unfoldMu" <- lexP
         Ident "unFix" <- lexP
@@ -285,7 +286,7 @@ instance (Functor f, Read1 f) => Read (Mu f) where
 #endif
 
 -- | Change base functor in 'Mu'.
-hoistMu :: (forall a. f a -> g a) -> Mu f -> Mu g
+hoistMu :: (Total g, Total f) => (forall a. f a -> g a) -> Mu f -> Mu g
 hoistMu n (Mu mk) = Mu $ \roll -> mk (roll . n)
 
 -- | Fold 'Mu'.
@@ -300,7 +301,7 @@ foldMu f (Mu mk) = mk f
 --
 -- >>> unfoldMu (\i -> if i < 4 then Cons i (i + 1) else Nil) (0 :: Int)
 -- unfoldMu unFix (Fix (Cons 0 (Fix (Cons 1 (Fix (Cons 2 (Fix (Cons 3 (Fix Nil)))))))))
-unfoldMu :: Functor f => (a -> f a) -> a -> Mu f
+unfoldMu :: (Total f, Functor f) => (a -> f a) -> a -> Mu f
 unfoldMu f x = Mu $ \mk -> refold mk f x
 
 -- | Wrap 'Mu'.
@@ -311,7 +312,7 @@ unfoldMu f x = Mu $ \mk -> refold mk f x
 --
 -- @since 0.3.2
 --
-wrapMu :: Functor f => f (Mu f) -> Mu f
+wrapMu :: (Total f, Functor f) => f (Mu f) -> Mu f
 wrapMu fx = Mu $ \f -> f (fmap (foldMu f) fx)
 
 -- | Unwrap 'Mu'.
@@ -322,7 +323,7 @@ wrapMu fx = Mu $ \f -> f (fmap (foldMu f) fx)
 --
 -- @since 0.3.2
 --
-unwrapMu :: Functor f => Mu f -> f (Mu f)
+unwrapMu :: (Total f, Functor f) => Mu f -> f (Mu f)
 unwrapMu = foldMu (fmap wrapMu)
 
 -------------------------------------------------------------------------------
@@ -332,18 +333,18 @@ unwrapMu = foldMu (fmap wrapMu)
 -- | Greatest fixed point. Efficient unfolding.
 data Nu f = forall a. Nu (a -> f a) a
 
-instance (Functor f, Eq1 f) => Eq (Nu f) where
+instance (Total f, Functor f, Eq1 f) => Eq (Nu f) where
     (==) = (==) `on` foldNu Fix
 
-instance (Functor f, Ord1 f) => Ord (Nu f) where
+instance (Total f, Functor f, Ord1 f) => Ord (Nu f) where
     compare = compare `on` foldNu Fix
 
-instance (Functor f, Show1 f) => Show (Nu f) where
+instance (Total f, Functor f, Show1 f) => Show (Nu f) where
     showsPrec d f = showParen (d > 10) $
         showString "unfoldNu unFix " . showsPrec 11 (foldNu Fix f)
 
 #ifdef __GLASGOW_HASKELL__
-instance (Functor f, Read1 f) => Read (Nu f) where
+instance (Total f, Functor f, Read1 f) => Read (Nu f) where
     readPrec = parens $ prec 10 $ do
         Ident "unfoldNu" <- lexP
         Ident "unFix" <- lexP
@@ -351,7 +352,7 @@ instance (Functor f, Read1 f) => Read (Nu f) where
 #endif
 
 -- | Change base functor in 'Nu'.
-hoistNu :: (forall a. f a -> g a) -> Nu f -> Nu g
+hoistNu :: (Total f, Total g) => (forall a. f a -> g a) -> Nu f -> Nu g
 hoistNu n (Nu next seed) = Nu (n . next) seed
 
 -- | Fold 'Nu'.
@@ -360,7 +361,7 @@ hoistNu n (Nu next seed) = Nu (n . next) seed
 -- >>> foldNu (elimListF 0 (+)) nu
 -- 6
 --
-foldNu :: Functor f => (f a -> a) -> Nu f -> a
+foldNu :: (Total f, Functor f) => (f a -> a) -> Nu f -> a
 foldNu f (Nu next seed) = refold f next seed
 
 -- | Unfold 'Nu'.
@@ -378,7 +379,7 @@ unfoldNu = Nu
 --
 -- @since 0.3.2
 --
-wrapNu :: Functor f => f (Nu f) -> Nu f
+wrapNu :: (Total f, Functor f) => f (Nu f) -> Nu f
 wrapNu = unfoldNu (fmap unwrapNu)
 
 -- | Unwrap 'Nu'.
@@ -389,7 +390,7 @@ wrapNu = unfoldNu (fmap unwrapNu)
 --
 -- @since 0.3.2
 --
-unwrapNu :: Functor f => Nu f -> f (Nu f)
+unwrapNu :: (Total f, Functor f) => Nu f -> f (Nu f)
 unwrapNu (Nu f x) = fmap (Nu f) (f x)
 
 -------------------------------------------------------------------------------
@@ -407,17 +408,17 @@ refold f g = h where h = f . fmap h . g
 
 -- | Monadic 'foldFix'.
 --
-foldFixM:: (Monad m, Traversable t)
+foldFixM:: (Monad m, Traversable t, Total m, Total t)
     => (t a -> m a) -> Fix t -> m a
 foldFixM f = go where go = (f =<<) . mapM go . unFix
 
 -- | Monadic anamorphism.
-unfoldFixM :: (Monad m, Traversable t)
+unfoldFixM :: (Monad m, Traversable t, Total m, Total t)
     => (a -> m (t a)) -> (a -> m (Fix t))
 unfoldFixM f = go where go = liftM Fix . (mapM go =<<) . f
 
 -- | Monadic hylomorphism.
-refoldM :: (Monad m, Traversable t)
+refoldM :: (Monad m, Traversable t, Total m, t @ m b)
     => (t b -> m b) -> (a -> m (t a)) -> (a -> m b)
 refoldM phi psi = go where go = (phi =<<) . (mapM go =<<) . psi
 
@@ -441,19 +442,19 @@ hylo = refold
 {-# DEPRECATED hylo "Use refold" #-}
 
 -- | Monadic catamorphism.
-cataM :: (Monad m, Traversable t)
+cataM :: (Total m, Monad m, Traversable t, Total t)
     => (t a -> m a) -> Fix t -> m a
 cataM = foldFixM
 {-# DEPRECATED cataM "Use foldFixM" #-}
 
 -- | Monadic anamorphism.
-anaM :: (Monad m, Traversable t)
+anaM :: (Total m, Monad m, Traversable t, Total t)
     => (a -> m (t a)) -> (a -> m (Fix t))
 anaM = unfoldFixM
 {-# DEPRECATED anaM "Use unfoldFixM" #-}
 
 -- | Monadic hylomorphism.
-hyloM :: (Monad m, Traversable t)
+hyloM :: (Total m, Monad m, Traversable t, t @ m b)
     => (t b -> m b) -> (a -> m (t a)) -> (a -> m b)
 hyloM = refoldM
 {-# DEPRECATED hyloM "Use refoldM" #-}

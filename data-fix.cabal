@@ -45,6 +45,15 @@ Source-repository head
 library
   hs-source-dirs:   src
   default-language: Haskell2010
+  default-extensions:
+    PartialTypeConstructors
+    -- Needed for PTC annotations
+    FlexibleContexts
+    ExplicitNamespaces
+    TypeOperators
+    QuantifiedConstraints
+
+    
   ghc-options:      -Wall
   exposed-modules:  Data.Fix
 
@@ -60,6 +69,7 @@ library
       base      >=4.4     && <4.17
     , deepseq   >=1.3.0.0 && <1.5
     , hashable  >=1.2.7.0 && <1.5
+    , ghc-prim
 
   if impl(ghc <7.6)
     -- for GHC.Generics
